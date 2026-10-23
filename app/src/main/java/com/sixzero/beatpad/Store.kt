@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 /** Saves/loads the whole project as JSON in SharedPreferences. */
 object Store {
-    private const val KEY = "project_v3"
+    private const val KEY = "project_v4"
 
     fun save(ctx: Context, p: Project) {
         val o = JSONObject()
@@ -21,6 +21,17 @@ object Store {
             pats.put(tr)
         }
         o.put("patterns", pats)
+        o.put("laneInstrument", JSONArray(p.laneInstrument.toList()))
+        o.put("laneVolume", JSONArray(p.laneVolume.map { it.toDouble() }))
+        o.put("laneMuted", JSONArray(p.laneMuted.toList()))
+        o.put("scale", p.scale); o.put("root", p.root)
+        val notes = JSONArray()
+        for (s in p.notes) {
+            val lanes = JSONArray()
+            for (l in s) lanes.put(JSONArray(l.map { JSONArray(listOf(it.pitch, it.start, it.len)) }))
+            notes.put(lanes)
+        }
+        o.put("notes", notes)
         ctx.getSharedPreferences("beatpad", Context.MODE_PRIVATE).edit().putString(KEY, o.toString()).apply()
     }
 
@@ -39,6 +50,22 @@ object Store {
                     for (ti in 0 until minOf(tr.length(), p.tracks)) {
                         val str = tr.getString(ti)
                         for (st in 0 until minOf(str.length, p.steps)) p.patterns[si][ti][st] = (str[st] - '0').coerceIn(0, 2).toByte()
+                    }
+                }
+            }
+            p.scale = o.optInt("scale", 1); p.root = o.optInt("root", 0)
+            o.optJSONArray("laneInstrument")?.let { a -> for (i in 0 until minOf(a.length(), p.lanes)) p.laneInstrument[i] = a.getInt(i) }
+            o.optJSONArray("laneVolume")?.let { a -> for (i in 0 until minOf(a.length(), p.lanes)) p.laneVolume[i] = a.getDouble(i).toFloat() }
+            o.optJSONArray("laneMuted")?.let { a -> for (i in 0 until minOf(a.length(), p.lanes)) p.laneMuted[i] = a.getBoolean(i) }
+            o.optJSONArray("notes")?.let { ns ->
+                for (si in 0 until minOf(ns.length(), p.slots)) {
+                    val lanes = ns.getJSONArray(si)
+                    for (li in 0 until minOf(lanes.length(), p.lanes)) {
+                        val arr = lanes.getJSONArray(li)
+                        for (k in 0 until arr.length()) {
+                            val n = arr.getJSONArray(k)
+                            p.notes[si][li].add(Note(n.getInt(0), n.getInt(1), n.getInt(2)))
+                        }
                     }
                 }
             }

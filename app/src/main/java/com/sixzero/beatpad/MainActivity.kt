@@ -25,6 +25,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var grid: SequencerView
     private lateinit var pads: PadsView
+    private lateinit var roll: PianoRollView
+    private val laneBtns = mutableListOf<Pill>()
+    private val instBtns = mutableListOf<Pill>()
+    private val scaleBtns = mutableListOf<Pill>()
+    private lateinit var rootBtn: Pill
+    private var lane = 0
     private lateinit var playBtn: Pill
     private lateinit var recBtn: Pill
     private lateinit var chainBtn: Pill
@@ -50,6 +56,7 @@ class MainActivity : AppCompatActivity() {
 
         grid = findViewById(R.id.grid)
         pads = findViewById(R.id.pads)
+        roll = findViewById(R.id.roll)
         hint = findViewById(R.id.hint)
         grid.tracks = project.tracks
         grid.muted = project.muted
@@ -62,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         setupSliders()
         setupTrackLabels()
         setupPads()
+        setupMelody()
         setupMixer()
         setupTabs()
         applyKitNames()
@@ -69,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         engine.onStep = { slot, step ->
             runOnUiThread {
                 grid.playhead = if (slot == project.slot) step else -1
+                roll.playhead = grid.playhead
                 if (project.chain && step >= 0 && slot != project.slot) selectSlot(slot, fromPlayback = true)
             }
         }
@@ -80,7 +89,8 @@ class MainActivity : AppCompatActivity() {
         p[0][0] = ACCENT; p[0][8] = HIT; p[0][10] = HIT
         p[1][4] = ACCENT; p[1][12] = ACCENT
         for (s in 0 until 16 step 2) p[3][s] = if (s % 4 == 0) ACCENT else HIT
-        p[7][0] = HIT; p[7][10] = HIT
+        val bass = project.notes[0][0]
+        bass.add(Note(36, 0, 3)); bass.add(Note(36, 6, 2)); bass.add(Note(39, 10, 2)); bass.add(Note(34, 13, 3))
     }
 
     private fun save() = Store.save(this, project)
@@ -145,8 +155,9 @@ class MainActivity : AppCompatActivity() {
             text = "CLEAR"
             layoutParams = lp(1f, end = 0)
             setOnClickListener {
-                for (t in project.patterns[project.slot]) t.fill(OFF)
-                grid.invalidate(); save()
+                if (page == 2) project.notes[project.slot][lane].clear()
+                else for (t in project.patterns[project.slot]) t.fill(OFF)
+                grid.invalidate(); roll.invalidate(); save()
             }
         }
         row.addView(playBtn); row.addView(recBtn); row.addView(clear)
@@ -187,6 +198,7 @@ class MainActivity : AppCompatActivity() {
     private fun selectSlot(i: Int, fromPlayback: Boolean = false) {
         project.slot = i
         grid.pattern = project.patterns[i]
+        roll.notes = project.notes[i][lane]
         refreshSlots()
         if (!fromPlayback) save()
     }
@@ -270,6 +282,74 @@ class MainActivity : AppCompatActivity() {
         pads.onPadLongPress = { i -> toggleMute(i) }
     }
 
+    // ---- melody ----
+    private fun setupMelody() {
+        val laneRow = findViewById<LinearLayout>(R.id.laneRow)
+        project.laneNames.forEachIndexed { i, n ->
+            val b = Pill(this).apply {
+                text = n; textSize = 11f
+                layoutParams = lp(1f)
+                setOnClickListener { lane = i; refreshMelody() }
+                setOnLongClickListener { project.laneMuted[i] = !project.laneMuted[i]; refreshMelody(); save(); true }
+            }
+            laneRow.addView(b); laneBtns.add(b)
+        }
+        Synth.instruments.forEachIndexed { i, n ->
+            val b = Pill(this).apply {
+                text = n; textSize = 10f
+                layoutParams = lp(1f, end = if (i == Synth.instruments.size - 1) 0 else 6)
+                setOnClickListener { project.laneInstrument[lane] = i; refreshMelody(); save(); engine.triggerNote(lane, 48) }
+            }
+            laneRow.addView(b); instBtns.add(b)
+        }
+        val scaleRow = findViewById<LinearLayout>(R.id.scaleRow)
+        rootBtn = Pill(this).apply {
+            textSize = 10f
+            layoutParams = lp(1f)
+            setOnClickListener { project.root = (project.root + 1) % 12; refreshMelody(); save() }
+            setOnLongClickListener { project.root = (project.root + 11) % 12; refreshMelody(); save(); true }
+        }
+        scaleRow.addView(rootBtn)
+        Scales.list.forEachIndexed { i, sc ->
+            val b = Pill(this).apply {
+                text = sc.name; textSize = 9f
+                layoutParams = lp(1f)
+                setOnClickListener { project.scale = i; refreshMelody(); save() }
+            }
+            scaleRow.addView(b); scaleBtns.add(b)
+        }
+        val up = Pill(this).apply { text = "▲"; layoutParams = lp(0.6f); setOnClickListener { roll.scrollRows(4) } }
+        val down = Pill(this).apply { text = "▼"; layoutParams = lp(0.6f, end = 0); setOnClickListener { roll.scrollRows(-4) } }
+        scaleRow.addView(up); scaleRow.addView(down)
+
+        roll.onChange = { save() }
+        roll.onPreview = { pitch -> engine.triggerNote(lane, pitch) }
+        refreshMelody()
+        roll.centerOn(48)
+    }
+
+    private fun refreshMelody() {
+        roll.notes = project.notes[project.slot][lane]
+        roll.root = project.root
+        roll.pitches = Scales.pitches(project.scale, project.root, 24, 96)
+        roll.color = if (lane == 0) Palette.tracks[7] else Palette.tracks[2]
+        laneBtns.forEachIndexed { i, b ->
+            val m = project.laneMuted[i]
+            if (i == lane) b.style(if (m) Palette.cell else Palette.accent, if (m) Palette.dim else Color.WHITE)
+            else b.style(Palette.panel, if (m) Color.parseColor("#44444F") else Palette.dim)
+        }
+        instBtns.forEachIndexed { i, b ->
+            val on = project.laneInstrument[lane] == i
+            b.style(if (on) Palette.cyan else Palette.panel, if (on) Color.BLACK else Palette.dim)
+        }
+        rootBtn.text = Synth.noteNames[project.root]
+        rootBtn.style(Palette.cell, Palette.text)
+        scaleBtns.forEachIndexed { i, b ->
+            val on = project.scale == i
+            b.style(if (on) Palette.cell else Palette.panel, if (on) Palette.text else Palette.dim, if (on) Color.parseColor("#44444F") else Color.TRANSPARENT)
+        }
+    }
+
     // ---- mixer ----
     private fun setupMixer() {
         val mixer = findViewById<LinearLayout>(R.id.mixer)
@@ -296,6 +376,27 @@ class MainActivity : AppCompatActivity() {
             row.addView(tv); row.addView(sb); mixer.addView(row)
             refreshLabel(i)
         }
+        for (l in 0 until project.lanes) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 6.dp(), 0, 6.dp())
+            }
+            val col = if (l == 0) Palette.tracks[7] else Palette.tracks[2]
+            val tv = TextView(this).apply {
+                text = project.laneNames[l]; textSize = 12f; setTextColor(col)
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(60.dp(), LinearLayout.LayoutParams.WRAP_CONTENT)
+                setOnClickListener { engine.triggerNote(l, 48) }
+            }
+            val sb = SeekBar(this).apply {
+                max = 100; progress = (project.laneVolume[l] * 100).toInt()
+                progressTintList = ColorStateList.valueOf(col)
+                thumbTintList = ColorStateList.valueOf(col)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                onChange { p -> project.laneVolume[l] = p / 100f }
+            }
+            row.addView(tv); row.addView(sb); mixer.addView(row)
+        }
         // export lives at the bottom of the mixer page
         val export = Pill(this).apply {
             text = "EXPORT WAV (4 BARS)"
@@ -309,10 +410,10 @@ class MainActivity : AppCompatActivity() {
     // ---- tabs ----
     private fun setupTabs() {
         val tabs = findViewById<LinearLayout>(R.id.tabs)
-        listOf("SEQ", "PADS", "MIX").forEachIndexed { i, n ->
+        listOf("SEQ", "PADS", "MELODY", "MIX").forEachIndexed { i, n ->
             val b = Pill(this).apply {
                 text = n
-                layoutParams = lp(1f, end = if (i == 2) 0 else 6)
+                layoutParams = lp(1f, end = if (i == 3) 0 else 6)
                 setOnClickListener { showPage(i) }
             }
             tabs.addView(b); tabBtns.add(b)
@@ -324,10 +425,12 @@ class MainActivity : AppCompatActivity() {
         page = i
         findViewById<View>(R.id.seqPage).visibility = if (i == 0) View.VISIBLE else View.GONE
         pads.visibility = if (i == 1) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.mixPage).visibility = if (i == 2) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.melodyPage).visibility = if (i == 2) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.mixPage).visibility = if (i == 3) View.VISIBLE else View.GONE
         hint.text = when (i) {
             0 -> "tap = hit • drag = paint • hold = accent • hold name = mute"
             1 -> "tap pads to play • turn on REC while playing to record into the grid"
+            2 -> "tap = add note • tap note = delete • drag = stretch • tap key = preview"
             else -> "volume per sound • tap name = preview • hold = mute"
         }
         tabBtns.forEachIndexed { k, b ->

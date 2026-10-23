@@ -27,7 +27,20 @@ class Project(val tracks: Int, val steps: Int, val slots: Int) {
     var chain = false
     var slot = 0
     var kit = "808"
+
+    // ---- melodic lanes ----
+    val lanes = 2
+    val laneNames = listOf("BASS", "LEAD")
+    /** notes[slot][lane] */
+    val notes = Array(slots) { Array(lanes) { CopyOnWriteArrayList<Note>() } }
+    val laneInstrument = intArrayOf(0, 1)
+    val laneVolume = floatArrayOf(0.9f, 0.6f)
+    val laneMuted = BooleanArray(lanes)
+    var scale = 1      // index into Scales.list
+    var root = 0       // 0 = C
 }
+
+data class Note(var pitch: Int, var start: Int, var len: Int)
 
 /**
  * Sample-accurate step sequencer. One audio thread mixes every voice into a
@@ -41,7 +54,6 @@ class BeatEngine(val project: Project) {
     /** (slot, step) — step == -1 means stopped */
     var onStep: ((Int, Int) -> Unit)? = null
 
-    private class Voice(val data: FloatArray, val gain: Float, var pos: Int = 0, var delay: Int = 0)
     private val voices = CopyOnWriteArrayList<Voice>()
     private var thread: Thread? = null
     private val running = AtomicBoolean(false)
@@ -49,7 +61,13 @@ class BeatEngine(val project: Project) {
 
     fun trigger(track: Int, accent: Boolean = false) {
         if (track >= samples.size) return
-        voices.add(Voice(samples[track], project.volume[track] * (if (accent) 1f else 0.72f)))
+        voices.add(SampleVoice(samples[track], project.volume[track] * (if (accent) 1f else 0.72f)))
+    }
+
+    /** Preview a melodic note right now. */
+    fun triggerNote(lane: Int, pitch: Int, lenSteps: Int = 2) {
+        val len = (lenSteps * samplesPerStep()).toInt()
+        voices.add(SynthVoice(project.laneInstrument[lane], pitch, len, project.laneVolume[lane]))
     }
 
     fun play() { restartRequested = true; playing.set(true) }
@@ -110,7 +128,18 @@ class BeatEngine(val project: Project) {
                     val v = pat[t][step]
                     if (v != OFF && !project.muted[t]) {
                         val g = project.volume[t] * (if (v == ACCENT) 1f else 0.72f)
-                        voices.add(Voice(smp[t], g, delay = (st - blockStart).toInt()))
+                        voices.add(SampleVoice(smp[t], g).also { it.delay = (st - blockStart).toInt() })
+                    }
+                }
+                for (l in 0 until project.lanes) {
+                    if (project.laneMuted[l]) continue
+                    val list = project.notes[playSlot][l]
+                    for (k in list.indices) {
+                        val note = list.getOrNull(k) ?: break
+                        if (note.start == step) {
+                            val len = (note.len * sps).toInt()
+                            voices.add(SynthVoice(project.laneInstrument[l], note.pitch, len, project.laneVolume[l]).also { it.delay = (st - blockStart).toInt() })
+                        }
                     }
                 }
                 onStep?.invoke(playSlot, step)
@@ -122,12 +151,10 @@ class BeatEngine(val project: Project) {
     private fun render(mix: FloatArray, block: Int) {
         java.util.Arrays.fill(mix, 0, block, 0f)
         for (v in voices) {
-            var i = 0
-            if (v.delay > 0) { i = v.delay; v.delay = 0 }
-            var p = v.pos
-            while (i < block && p < v.data.size) { mix[i] += v.data[p] * v.gain; i++; p++ }
-            v.pos = p
-            if (p >= v.data.size) voices.remove(v)
+            var from = 0
+            if (v.delay > 0) { from = v.delay; v.delay = 0 }
+            v.render(mix, from, block)
+            if (v.done) voices.remove(v)
         }
         // gentle master soft-clip so stacked hits don't crackle
         for (i in 0 until block) mix[i] = tanh(mix[i] * 1.1f)
