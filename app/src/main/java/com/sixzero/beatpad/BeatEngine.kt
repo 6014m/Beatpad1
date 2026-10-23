@@ -16,9 +16,13 @@ const val HIT: Byte = 1
 const val ACCENT: Byte = 2
 
 /** The whole state of a project: patterns, mixer, tempo, kit. */
-class Project(val tracks: Int, val steps: Int, val slots: Int) {
-    /** patterns[slot][track][step] = OFF / HIT / ACCENT */
-    val patterns = Array(slots) { Array(tracks) { ByteArray(steps) } }
+class Project(val tracks: Int, val slots: Int) {
+    companion object { const val MAX_STEPS = 64 }
+    /** bars per pattern: 1, 2 or 4. steps = bars * 16 */
+    var bars = 1
+    val steps get() = bars * 16
+    /** patterns[slot][track][step] = OFF / HIT / ACCENT (sized for the max) */
+    val patterns = Array(slots) { Array(tracks) { ByteArray(MAX_STEPS) } }
     val volume = FloatArray(tracks) { 0.85f }
     val muted = BooleanArray(tracks)
     val chainOn = BooleanArray(slots) { it == 0 }

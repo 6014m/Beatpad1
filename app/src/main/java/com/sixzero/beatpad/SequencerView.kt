@@ -17,7 +17,9 @@ class SequencerView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     var tracks = 8
-    var steps = 16
+    var steps = 16            // visible columns
+    var offset = 0            // first visible step
+        set(v) { field = v; invalidate() }
     var pattern: Array<ByteArray> = Array(tracks) { ByteArray(steps) }
         set(v) { field = v; invalidate() }
     var muted: BooleanArray = BooleanArray(tracks)
@@ -44,7 +46,7 @@ class SequencerView @JvmOverloads constructor(
             val c = trackColors[t % trackColors.size]
             for (s in 0 until steps) {
                 rect.set(s * cw + gap / 2, t * ch + gap / 2, (s + 1) * cw - gap / 2, (t + 1) * ch - gap / 2)
-                val v = pattern[t][s]
+                val v = pattern[t][offset + s]
                 val paint = when {
                     v != OFF -> cellOn.apply {
                         val a = if (muted[t]) 60 else if (v == ACCENT) 255 else 170
@@ -71,7 +73,7 @@ class SequencerView @JvmOverloads constructor(
     private var moved = false
     private val longPress = Runnable {
         if (downCell >= 0 && !moved) {
-            val t = downCell / steps; val s = downCell % steps
+            val t = downCell / steps; val s = offset + downCell % steps
             pattern[t][s] = if (pattern[t][s] == ACCENT) HIT else ACCENT
             paintValue = null
             performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
@@ -87,7 +89,7 @@ class SequencerView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 downCell = cell; moved = false
-                paintValue = if (pattern[t][s] == OFF) HIT else OFF
+                paintValue = if (pattern[t][offset + s] == OFF) HIT else OFF
                 postDelayed(longPress, 380)
             }
             MotionEvent.ACTION_MOVE -> if (cell != downCell || cell != lastCell) {
@@ -113,8 +115,8 @@ class SequencerView @JvmOverloads constructor(
     private fun applyAt(t: Int, s: Int) {
         val v = paintValue ?: return
         lastCell = t * steps + s
-        if (pattern[t][s] != v) {
-            pattern[t][s] = v
+        if (pattern[t][offset + s] != v) {
+            pattern[t][offset + s] = v
             invalidate(); onChange?.invoke()
         }
     }

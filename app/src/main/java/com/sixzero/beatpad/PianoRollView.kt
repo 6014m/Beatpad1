@@ -20,7 +20,10 @@ class PianoRollView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
-    var steps = 16
+    var steps = 16            // visible columns
+    var totalSteps = 16
+    var offset = 0
+        set(v) { field = v; invalidate() }
     var notes: MutableList<Note> = ArrayList()
         set(v) { field = v; invalidate() }
     var pitches: IntArray = Scales.pitches(1, 0, 36, 84)
@@ -90,7 +93,9 @@ class PianoRollView @JvmOverloads constructor(
             val r = rowOf(n.pitch)
             if (r < 0 || r >= visibleRows) continue
             val y = yTop(r)
-            rect.set(keyW + n.start * cw + gap / 2, y + gap / 2, keyW + (n.start + n.len) * cw - gap / 2, y + ch - gap / 2)
+            val ns = n.start - offset
+            if (ns + n.len <= 0 || ns >= steps) continue
+            rect.set(keyW + maxOf(ns, 0) * cw + gap / 2, y + gap / 2, keyW + minOf(ns + n.len, steps) * cw - gap / 2, y + ch - gap / 2)
             notePaint.color = color
             canvas.drawRoundRect(rect, 6f, 6f, notePaint)
             canvas.drawText(Synth.name(n.pitch), rect.left + 6f, rect.bottom - 6f, noteText)
@@ -113,7 +118,7 @@ class PianoRollView @JvmOverloads constructor(
         val row = (visibleRows - 1 - (y / ch()).toInt()).coerceIn(0, visibleRows - 1)
         val pi = row + rowOffset
         val pitch = pitches.getOrNull(pi) ?: return true
-        val step = (((x - keyW) / cw()).toInt()).coerceIn(0, steps - 1)
+        val step = offset + (((x - keyW) / cw()).toInt()).coerceIn(0, steps - 1)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
@@ -125,7 +130,7 @@ class PianoRollView @JvmOverloads constructor(
                 if (!moved && (abs(x - downX) > 18f || abs(y - downY) > 18f)) moved = true
                 val d = drag
                 if (moved && d != null) {
-                    val newLen = (step - d.start + 1).coerceIn(1, steps - d.start)
+                    val newLen = (step - d.start + 1).coerceIn(1, totalSteps - d.start)
                     if (newLen != d.len) { d.len = newLen; invalidate(); onChange?.invoke() }
                 } else if (moved && d == null && downX >= keyW) {
                     // dragging on empty space: paint a note then stretch it

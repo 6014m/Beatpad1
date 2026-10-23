@@ -31,6 +31,9 @@ class MainActivity : AppCompatActivity() {
     private val scaleBtns = mutableListOf<Pill>()
     private lateinit var rootBtn: Pill
     private var lane = 0
+    private lateinit var barsBtn: Pill
+    private val barBtns = mutableListOf<Pill>()
+    private var viewBar = 0
     private lateinit var playBtn: Pill
     private lateinit var recBtn: Pill
     private lateinit var chainBtn: Pill
@@ -48,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        project = Project(tracks = 8, steps = 16, slots = slotNames.size)
+        project = Project(tracks = 8, slots = slotNames.size)
         if (!Store.load(this, project)) defaultPattern()
         engine = BeatEngine(project)
         kit = Kits.load(this, project.kit)
@@ -66,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         setupKits()
         setupTransport()
         setupSlots()
+        setupBars()
         setupSliders()
         setupTrackLabels()
         setupPads()
@@ -76,8 +80,10 @@ class MainActivity : AppCompatActivity() {
 
         engine.onStep = { slot, step ->
             runOnUiThread {
-                grid.playhead = if (slot == project.slot) step else -1
-                roll.playhead = grid.playhead
+                if (step >= 0 && step / 16 != viewBar) showBar(step / 16, fromPlayback = true)
+                val local = if (slot == project.slot && step >= 0) step - viewBar * 16 else -1
+                grid.playhead = local
+                roll.playhead = local
                 if (project.chain && step >= 0 && slot != project.slot) selectSlot(slot, fromPlayback = true)
             }
         }
@@ -214,6 +220,68 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (project.chain) chainBtn.style(Palette.cyan, Color.BLACK) else chainBtn.style(Palette.panel, Palette.dim)
+    }
+
+    // ---- bars ----
+    private fun setupBars() {
+        val row = findViewById<LinearLayout>(R.id.barRow)
+        barsBtn = Pill(this).apply {
+            textSize = 10f
+            layoutParams = lp(1.3f)
+            setOnClickListener {
+                project.bars = when (project.bars) { 1 -> 2; 2 -> 4; else -> 1 }
+                if (viewBar >= project.bars) viewBar = 0
+                // trim notes that now hang past the end
+                for (sl in project.notes) for (ln in sl) {
+                    ln.removeAll { it.start >= project.steps }
+                    for (n in ln) if (n.start + n.len > project.steps) n.len = project.steps - n.start
+                }
+                refreshBars(); showBar(viewBar); save()
+            }
+        }
+        row.addView(barsBtn)
+        for (i in 0 until 4) {
+            val b = Pill(this).apply {
+                text = "${i + 1}"; textSize = 10f
+                layoutParams = lp(1f, end = if (i == 3) 0 else 6)
+                setOnClickListener { showBar(i) }
+                setOnLongClickListener { copyBarFromPrevious(i); true }
+            }
+            row.addView(b); barBtns.add(b)
+        }
+        refreshBars(); showBar(0)
+    }
+
+    /** Long-press a bar: copy the previous bar into it (quick way to extend a loop). */
+    private fun copyBarFromPrevious(i: Int) {
+        if (i == 0 || i >= project.bars) return
+        val src = (i - 1) * 16; val dst = i * 16
+        val pat = project.patterns[project.slot]
+        for (t in pat.indices) for (s in 0 until 16) pat[t][dst + s] = pat[t][src + s]
+        for (ln in project.notes[project.slot]) {
+            ln.removeAll { it.start >= dst && it.start < dst + 16 }
+            val copies = ln.filter { it.start >= src && it.start < src + 16 }.map { Note(it.pitch, it.start + 16, minOf(it.len, project.steps - it.start - 16)) }
+            ln.addAll(copies)
+        }
+        grid.invalidate(); roll.invalidate(); save()
+        Toast.makeText(this, "Bar ${i} copied to ${i + 1}", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun refreshBars() {
+        barsBtn.text = "${project.bars} BAR" + (if (project.bars > 1) "S" else "")
+        barsBtn.style(Palette.cell, Palette.text)
+        barBtns.forEachIndexed { i, b ->
+            b.visibility = if (i < project.bars) View.VISIBLE else View.INVISIBLE
+            if (i == viewBar) b.style(Palette.cell, Palette.text, Color.parseColor("#44444F")) else b.style(Palette.panel, Palette.dim)
+        }
+        roll.totalSteps = project.steps
+    }
+
+    private fun showBar(i: Int, fromPlayback: Boolean = false) {
+        viewBar = i.coerceIn(0, project.bars - 1)
+        grid.offset = viewBar * 16
+        roll.offset = viewBar * 16
+        refreshBars()
     }
 
     // ---- bpm + swing ----

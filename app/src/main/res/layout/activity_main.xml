@@ -95,6 +95,14 @@
             android:thumbTint="#5CE1E6" />
     </LinearLayout>
 
+    <!-- bars -->
+    <LinearLayout
+        android:id="@+id/barRow"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:orientation="horizontal"
+        android:layout_marginTop="4dp" />
+
     <!-- main area -->
     <FrameLayout
         android:layout_width="match_parent"

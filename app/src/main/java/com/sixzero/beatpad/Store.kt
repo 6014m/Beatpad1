@@ -6,11 +6,11 @@ import org.json.JSONObject
 
 /** Saves/loads the whole project as JSON in SharedPreferences. */
 object Store {
-    private const val KEY = "project_v4"
+    private const val KEY = "project_v5"
 
     fun save(ctx: Context, p: Project) {
         val o = JSONObject()
-        o.put("bpm", p.bpm); o.put("swing", p.swing); o.put("chain", p.chain); o.put("slot", p.slot); o.put("kit", p.kit)
+        o.put("bpm", p.bpm); o.put("swing", p.swing); o.put("chain", p.chain); o.put("slot", p.slot); o.put("kit", p.kit); o.put("bars", p.bars)
         o.put("volume", JSONArray(p.volume.map { it.toDouble() }))
         o.put("muted", JSONArray(p.muted.toList()))
         o.put("chainOn", JSONArray(p.chainOn.toList()))
@@ -40,7 +40,7 @@ object Store {
         return try {
             val o = JSONObject(s)
             p.bpm = o.optInt("bpm", 120); p.swing = o.optInt("swing", 0)
-            p.chain = o.optBoolean("chain", false); p.kit = o.optString("kit", "808"); p.slot = o.optInt("slot", 0).coerceIn(0, p.slots - 1)
+            p.chain = o.optBoolean("chain", false); p.kit = o.optString("kit", "808"); p.bars = o.optInt("bars", 1).let { if (it == 2 || it == 4) it else 1 }; p.slot = o.optInt("slot", 0).coerceIn(0, p.slots - 1)
             o.optJSONArray("volume")?.let { a -> for (i in 0 until minOf(a.length(), p.tracks)) p.volume[i] = a.getDouble(i).toFloat() }
             o.optJSONArray("muted")?.let { a -> for (i in 0 until minOf(a.length(), p.tracks)) p.muted[i] = a.getBoolean(i) }
             o.optJSONArray("chainOn")?.let { a -> for (i in 0 until minOf(a.length(), p.slots)) p.chainOn[i] = a.getBoolean(i) }
@@ -49,7 +49,7 @@ object Store {
                     val tr = pats.getJSONArray(si)
                     for (ti in 0 until minOf(tr.length(), p.tracks)) {
                         val str = tr.getString(ti)
-                        for (st in 0 until minOf(str.length, p.steps)) p.patterns[si][ti][st] = (str[st] - '0').coerceIn(0, 2).toByte()
+                        for (st in 0 until minOf(str.length, Project.MAX_STEPS)) p.patterns[si][ti][st] = (str[st] - '0').coerceIn(0, 2).toByte()
                     }
                 }
             }
