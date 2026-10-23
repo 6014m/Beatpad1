@@ -111,7 +111,7 @@ class BeatEngine(val project: Project) {
     }
 
     private fun render(mix: FloatArray, block: Int) {
-        java.util.Arrays.fill(mix, 0f, block, 0f)
+        java.util.Arrays.fill(mix, 0, block, 0f)
         for (v in voices) {
             var i = 0
             if (v.delay > 0) { i = v.delay; v.delay = 0 }
