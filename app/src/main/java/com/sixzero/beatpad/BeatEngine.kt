@@ -9,20 +9,24 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.tanh
 
-/** The whole state of a project: patterns, mixer, tempo. */
+const val OFF: Byte = 0
+const val HIT: Byte = 1
+const val ACCENT: Byte = 2
+
+/** The whole state of a project: patterns, mixer, tempo, kit. */
 class Project(val tracks: Int, val steps: Int, val slots: Int) {
-    /** patterns[slot][track][step] */
-    val patterns = Array(slots) { Array(tracks) { BooleanArray(steps) } }
+    /** patterns[slot][track][step] = OFF / HIT / ACCENT */
+    val patterns = Array(slots) { Array(tracks) { ByteArray(steps) } }
     val volume = FloatArray(tracks) { 0.85f }
     val muted = BooleanArray(tracks)
-    /** which slots are included when chain mode is on */
     val chainOn = BooleanArray(slots) { it == 0 }
     var bpm = 120
-    var swing = 0          // 0..100
+    var swing = 0
     var chain = false
-    var slot = 0           // currently edited / played slot
+    var slot = 0
+    var kit = "808"
 }
 
 /**
@@ -31,7 +35,7 @@ class Project(val tracks: Int, val steps: Int, val slots: Int) {
  */
 class BeatEngine(val project: Project) {
     private val sr = DrumSynth.SAMPLE_RATE
-    val samples: Array<FloatArray> = DrumSynth.all()
+    @Volatile var samples: Array<FloatArray> = DrumSynth.all()
 
     val playing = AtomicBoolean(false)
     /** (slot, step) — step == -1 means stopped */
@@ -43,12 +47,16 @@ class BeatEngine(val project: Project) {
     private val running = AtomicBoolean(false)
     @Volatile private var restartRequested = false
 
-    fun trigger(track: Int) {
-        voices.add(Voice(samples[track], project.volume[track]))
+    fun trigger(track: Int, accent: Boolean = false) {
+        if (track >= samples.size) return
+        voices.add(Voice(samples[track], project.volume[track] * (if (accent) 1f else 0.72f)))
     }
 
     fun play() { restartRequested = true; playing.set(true) }
     fun stop() { playing.set(false); onStep?.invoke(project.slot, -1) }
+
+    /** Fractional step position inside the current pattern (for live record quantize). */
+    fun positionInSteps(): Double = (sampleCounter / samplesPerStep()) % project.steps
 
     fun start() {
         if (running.getAndSet(true)) return
@@ -58,23 +66,19 @@ class BeatEngine(val project: Project) {
         }
     }
 
-    fun release() {
-        running.set(false); playing.set(false); thread?.join(500)
-    }
+    fun release() { running.set(false); playing.set(false); thread?.join(500) }
 
     // ---- sequencing state (audio thread only) ----
-    private var sampleCounter = 0L
+    @Volatile private var sampleCounter = 0L
     private var lastStepIndex = -1L
     private var playSlot = 0
 
-    private fun samplesPerStep() = (60.0 / project.bpm / 4.0 * sr)
+    private fun samplesPerStep() = 60.0 / project.bpm / 4.0 * sr
 
-    /** Returns the sample offset of step `n` (global, not wrapped) with swing applied. */
     private fun stepStart(n: Long): Long {
         val sps = samplesPerStep()
-        val base = n * sps
         val swingAmt = if (n % 2 == 1L) sps * (project.swing / 100.0) * 0.33 else 0.0
-        return (base + swingAmt).toLong()
+        return (n * sps + swingAmt).toLong()
     }
 
     private fun nextSlotAfter(s: Int): Int {
@@ -86,8 +90,10 @@ class BeatEngine(val project: Project) {
         return s
     }
 
+    private fun firstSlot() =
+        if (project.chain) (project.chainOn.indexOfFirst { it }.takeIf { it >= 0 } ?: project.slot) else project.slot
+
     private fun schedule(blockStart: Long, block: Int) {
-        // find any step whose start falls inside [blockStart, blockStart+block)
         val sps = samplesPerStep()
         var n = (blockStart / sps).toLong() - 1
         if (n < 0) n = 0
@@ -99,9 +105,12 @@ class BeatEngine(val project: Project) {
                 val step = (n % project.steps).toInt()
                 if (step == 0 && n > 0) playSlot = nextSlotAfter(playSlot)
                 val pat = project.patterns[playSlot]
-                for (t in 0 until project.tracks) {
-                    if (pat[t][step] && !project.muted[t]) {
-                        voices.add(Voice(samples[t], project.volume[t], delay = (st - blockStart).toInt()))
+                val smp = samples
+                for (t in 0 until minOf(project.tracks, smp.size)) {
+                    val v = pat[t][step]
+                    if (v != OFF && !project.muted[t]) {
+                        val g = project.volume[t] * (if (v == ACCENT) 1f else 0.72f)
+                        voices.add(Voice(smp[t], g, delay = (st - blockStart).toInt()))
                     }
                 }
                 onStep?.invoke(playSlot, step)
@@ -120,6 +129,8 @@ class BeatEngine(val project: Project) {
             v.pos = p
             if (p >= v.data.size) voices.remove(v)
         }
+        // gentle master soft-clip so stacked hits don't crackle
+        for (i in 0 until block) mix[i] = tanh(mix[i] * 1.1f)
     }
 
     private fun audioLoop() {
@@ -141,7 +152,7 @@ class BeatEngine(val project: Project) {
                 if (restartRequested) {
                     restartRequested = false
                     sampleCounter = 0; lastStepIndex = -1
-                    playSlot = if (project.chain) (project.chainOn.indexOfFirst { it }.takeIf { it >= 0 } ?: project.slot) else project.slot
+                    playSlot = firstSlot()
                 }
                 schedule(sampleCounter, block)
                 sampleCounter += block
@@ -155,19 +166,19 @@ class BeatEngine(val project: Project) {
 
     /** Offline-render the current slot (or chain) `bars` times to a 16-bit WAV. */
     fun exportWav(file: File, bars: Int) {
-        val e = BeatEngine(project) // fresh instance so live playback isn't disturbed
-        e.restartRequested = true
-        e.sampleCounter = 0; e.lastStepIndex = -1
-        e.playSlot = if (project.chain) (project.chainOn.indexOfFirst { it }.takeIf { it >= 0 } ?: project.slot) else project.slot
+        val e = BeatEngine(project)
+        e.samples = samples
+        e.sampleCounter = 0; e.lastStepIndex = -1; e.playSlot = firstSlot()
         val slotsInLoop = if (project.chain) project.chainOn.count { it }.coerceAtLeast(1) else 1
         val totalSteps = project.steps.toLong() * slotsInLoop * bars
-        val totalSamples = e.stepStart(totalSteps) + sr / 2 // half-second tail
+        val endOfSteps = e.stepStart(totalSteps)
+        val totalSamples = endOfSteps + sr / 2
         val block = 256
         val mix = FloatArray(block)
         val bytes = ByteBuffer.allocate((totalSamples * 2).toInt()).order(ByteOrder.LITTLE_ENDIAN)
         var pos = 0L
         while (pos < totalSamples) {
-            if (pos < e.stepStart(totalSteps)) e.schedule(pos, block)
+            if (pos < endOfSteps) e.schedule(pos, block)
             e.render(mix, block)
             val n = minOf(block.toLong(), totalSamples - pos).toInt()
             for (i in 0 until n) bytes.putShort((mix[i].coerceIn(-1f, 1f) * 32000f).toInt().toShort())

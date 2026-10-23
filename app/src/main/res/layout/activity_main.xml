@@ -3,9 +3,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#14141A"
-    android:padding="14dp">
+    android:background="#0E0E12"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp">
 
+    <!-- header: title + kit chips -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -13,75 +17,41 @@
         android:gravity="center_vertical">
 
         <TextView
-            android:layout_width="0dp"
-            android:layout_weight="1"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="BEATPAD"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
+            android:textColor="#EDEDF2"
+            android:textSize="18sp"
             android:textStyle="bold"
-            android:letterSpacing="0.2" />
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.25" />
 
-        <Button
-            android:id="@+id/exportBtn"
+        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+
+        <LinearLayout
+            android:id="@+id/kitRow"
             android:layout_width="wrap_content"
-            android:layout_height="40dp"
-            android:text="EXPORT"
-            android:textSize="12sp"
-            android:backgroundTint="#2A2A32"
-            android:textColor="#FFFFFF" />
+            android:layout_height="34dp"
+            android:orientation="horizontal" />
     </LinearLayout>
 
     <!-- transport -->
     <LinearLayout
+        android:id="@+id/transport"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="54dp"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp">
+        android:layout_marginTop="10dp" />
 
-        <Button
-            android:id="@+id/playBtn"
-            android:layout_width="0dp"
-            android:layout_weight="2"
-            android:layout_height="52dp"
-            android:text="PLAY"
-            android:textStyle="bold"
-            android:backgroundTint="#FF5C5C"
-            android:textColor="#FFFFFF" />
-
-        <Space android:layout_width="8dp" android:layout_height="1dp" />
-
-        <Button
-            android:id="@+id/clearBtn"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="52dp"
-            android:text="CLEAR"
-            android:backgroundTint="#2A2A32"
-            android:textColor="#FFFFFF" />
-
-        <Space android:layout_width="8dp" android:layout_height="1dp" />
-
-        <Button
-            android:id="@+id/mixBtn"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="52dp"
-            android:text="MIX"
-            android:backgroundTint="#2A2A32"
-            android:textColor="#FFFFFF" />
-    </LinearLayout>
-
-    <!-- pattern slots -->
+    <!-- slots -->
     <LinearLayout
         android:id="@+id/slotRow"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="40dp"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp"
-        android:gravity="center_vertical" />
+        android:layout_marginTop="8dp" />
 
-    <!-- bpm -->
+    <!-- bpm / swing -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -91,76 +61,99 @@
 
         <TextView
             android:id="@+id/bpmLabel"
-            android:layout_width="86dp"
+            android:layout_width="74dp"
             android:layout_height="wrap_content"
             android:text="120 BPM"
-            android:textColor="#CCCCCC"
-            android:textSize="13sp" />
+            android:textColor="#7A7A88"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium" />
 
         <SeekBar
             android:id="@+id/bpmSeek"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
-
-    <!-- swing -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+            android:layout_height="wrap_content"
+            android:progressTint="#FF5C5C"
+            android:thumbTint="#FF5C5C" />
 
         <TextView
             android:id="@+id/swingLabel"
-            android:layout_width="86dp"
+            android:layout_width="64dp"
             android:layout_height="wrap_content"
+            android:gravity="end"
+            android:paddingEnd="8dp"
             android:text="SWING 0"
-            android:textColor="#CCCCCC"
-            android:textSize="13sp" />
+            android:textColor="#7A7A88"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium" />
 
         <SeekBar
             android:id="@+id/swingSeek"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content" />
+            android:layout_width="90dp"
+            android:layout_height="wrap_content"
+            android:progressTint="#5CE1E6"
+            android:thumbTint="#5CE1E6" />
     </LinearLayout>
 
-    <!-- grid -->
-    <LinearLayout
+    <!-- main area -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="horizontal"
         android:layout_marginTop="6dp">
 
         <LinearLayout
-            android:id="@+id/trackLabels"
-            android:layout_width="56dp"
+            android:id="@+id/seqPage"
+            android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="vertical" />
+            android:orientation="horizontal">
 
-        <com.sixzero.beatpad.SequencerView
-            android:id="@+id/grid"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="match_parent" />
-    </LinearLayout>
+            <LinearLayout
+                android:id="@+id/trackLabels"
+                android:layout_width="54dp"
+                android:layout_height="match_parent"
+                android:orientation="vertical" />
 
-    <!-- mixer (hidden until MIX tapped) -->
-    <LinearLayout
-        android:id="@+id/mixer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:visibility="gone"
-        android:layout_marginTop="8dp" />
+            <com.sixzero.beatpad.SequencerView
+                android:id="@+id/grid"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="match_parent" />
+        </LinearLayout>
+
+        <com.sixzero.beatpad.PadsView
+            android:id="@+id/pads"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <ScrollView
+            android:id="@+id/mixPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+            <LinearLayout
+                android:id="@+id/mixer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+    </FrameLayout>
 
     <TextView
+        android:id="@+id/hint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="tap cells • drag to paint • tap name = preview • hold name = mute • hold A-D = add to chain"
-        android:textColor="#666666"
+        android:text="tap = hit • drag = paint • hold = accent • hold name = mute"
+        android:textColor="#55555F"
         android:textSize="11sp"
+        android:layout_marginTop="6dp" />
+
+    <!-- bottom tabs -->
+    <LinearLayout
+        android:id="@+id/tabs"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:orientation="horizontal"
         android:layout_marginTop="8dp" />
 </LinearLayout>
