@@ -14,9 +14,11 @@ class SequencerView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
-    var tracks = 6
+    var tracks = 8
     var steps = 16
     var pattern: Array<BooleanArray> = Array(tracks) { BooleanArray(steps) }
+        set(v) { field = v; invalidate() }
+    var muted: BooleanArray = BooleanArray(tracks)
     var playhead = -1
         set(v) { field = v; postInvalidateOnAnimation() }
     var onToggle: ((track: Int, step: Int, on: Boolean) -> Unit)? = null
@@ -24,10 +26,12 @@ class SequencerView @JvmOverloads constructor(
     val trackColors = intArrayOf(
         Color.parseColor("#FF5C5C"), // kick
         Color.parseColor("#FFB347"), // snare
+        Color.parseColor("#C68CFF"), // clap
         Color.parseColor("#5CE1E6"), // hat
         Color.parseColor("#8FD3FF"), // open hat
-        Color.parseColor("#C68CFF"), // clap
         Color.parseColor("#7CFC9B"), // tom
+        Color.parseColor("#FFE066"), // rim
+        Color.parseColor("#FF8FD6"), // 808
     )
 
     private val cellOff = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#2A2A32") }
@@ -46,7 +50,10 @@ class SequencerView @JvmOverloads constructor(
             for (s in 0 until steps) {
                 rect.set(s * cw + gap / 2, t * ch + gap / 2, (s + 1) * cw - gap / 2, (t + 1) * ch - gap / 2)
                 val paint = when {
-                    pattern[t][s] -> cellOn.apply { color = trackColors[t % trackColors.size] }
+                    pattern[t][s] -> cellOn.apply {
+                        val c = trackColors[t % trackColors.size]
+                        color = if (muted[t]) Color.argb(70, Color.red(c), Color.green(c), Color.blue(c)) else c
+                    }
                     s % 4 == 0 -> cellBeat
                     else -> cellOff
                 }
