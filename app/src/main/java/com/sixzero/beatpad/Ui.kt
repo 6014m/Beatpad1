@@ -31,7 +31,7 @@ class Pill(ctx: Context) : TextView(ctx) {
     var fillColor: Int = Palette.cell
         set(v) { field = v; shape.setColor(v) }
     var strokeColor: Int = Color.TRANSPARENT
-        set(v) { field = v; shape.setStroke((1.5f * ctx.resources.displayMetrics.density).toInt(), v) }
+        set(v) { field = v; shape.setStroke((1.5f * resources.displayMetrics.density).toInt(), v) }
 
     init {
         gravity = Gravity.CENTER
